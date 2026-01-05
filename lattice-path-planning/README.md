@@ -1,61 +1,49 @@
-# Lattice-Path-Planning (Continuous Printing Optimized)
+# 🌊 Wavy Lattice Slicer 🧶
+> **Make your 3D prints dance with bio-inspired internal structures!** 💃✨
 
-This project implements advanced path planning algorithms for **continuous 3D printing** (also known as One-Stroke or Spiral Vase mode on steroids). It is specifically optimized for materials and processes that benefit from non-stop extrusion, such as **Ceramic/Clay 3D Printing** and high-speed FDM.
+![Python](https://img.shields.io/badge/Made%20with-Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Love](https://img.shields.io/badge/Built%20with-💖-ff69b4?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Experimental-orange?style=for-the-badge)
 
-## Key Innovations
+Hi there! 👋 Welcome to **Wavy Slicer**. This isn't your boring old grid infill generator. This is a research-grade slicing engine that uses **Graph Theory** and **Sine Waves** to create organic, strong, and beautiful internal structures for FDM 3D printing.
 
-### 1. Global Spiral Mode (One-Stroke Printing)
-Unlike traditional slicers that lift the nozzle between layers or paths, this planner generates a **single continuous path** from the very first layer to the last.
-- **No Retractions**: Eliminates stops and starts, crucial for paste extruders (clay/concrete).
-- **Seamless Layer Transitions**: The Z-height increases continuously or uses a smooth transition, avoiding layer seams.
-- **M82 Absolute Extrusion**: Ensures precise extrusion tracking to prevent cumulative errors.
+---
 
-### 2. "Wavy" Organic Infill
-Replaces standard geometric infills with a **Sinusoidal Lattice**.
-- **Structural Integrity**: Wavy patterns provide better self-supporting properties and layer adhesion.
-- **Aesthetics**: Creates an organic, woven texture suitable for visible internal structures.
-- **Algorithm**: Uses a hexagonal-based grid perturbed by sine waves, connected via `cKDTree` for robust graph generation.
+## 🎨 What makes it special? (The Magic)
 
-### 3. Adaptive Z-Modulation
-Implements a non-planar slicing approach where the nozzle moves up and down within a layer to prevent collision and improve adhesion.
-- **Smooth Wave**: Uses a `(1 - cos(x))` function based on global distance.
-- **Anti-Digging**: Ensures the nozzle always moves relative to the previous layer's wave, preventing it from plowing into deposited material.
+### 1. 🌊 Bio-Mimetic Wavy Infill
+Instead of rigid straight lines, we use **sinusoidal modulation** ($x' = x + A \sin(ky)$) to wiggle the path.
+* **Why?** It looks super cool AND it increases the contact area between layers for better adhesion! 
 
-### 4. Robust Connection & Gap Handling
-- **Smart Bridging**: If a gap is too large to travel, the planner creates a slow-extrusion bridge instead of an empty travel move.
-- **Flow Rate Control**: Integrated `flow_rate` parameter to fine-tune extrusion for different materials.
-- **Hole Support**: Correctly handles internal holes in polygons using Shapely's containment logic.
+### 2. 🧠 Smart Hybrid Brain
+The slicer is "self-aware"! It analyzes the geometry of every layer:
+* **Big Area?** -> Generates the Wavy Lattice for speed and strength. 🚀
+* **Tiny/Broken Area?** -> Automatically switches to **Contour Mode** (concentric rings) to ensure the print doesn't fail. 🛡️
 
-## Usage
+### 3. 🧭 Graph-Based Path Planning
+We treat the printing path as a **Graph Traversal Problem** ($G(V,E)$).
+* Uses **DFS (Depth First Search)** and **Beam Search** to find the most efficient route.
+* Minimizes "Travel Moves" (jumping around without printing). 🏃‍♂️💨
 
-### Prerequisites
-- Python 3.8+
-- Required libraries: `numpy`, `matplotlib`, `scipy`, `networkx`, `shapely`, `trimesh`
+---
 
-### Running the Planner
-The main entry point is `main.py`. It loads an STL file, slices it, generates the path, and exports G-code.
+## 🛠️ Tech Stack (The Ingredients)
 
+We baked this project using these awesome libraries:
+
+* 🐍 **Python** (The core logic)
+* 📐 **Trimesh** (For slicing the STL)
+* 🔵 **Shapely** (For polygon math & clipping)
+* 🕸️ **NetworkX** (For graph building & traversal)
+* 🔢 **NumPy/SciPy** (For the mathy stuff)
+
+---
+
+## 🚀 Getting Started
+
+Want to try it out? Follow these simple steps!
+
+### 1. Clone the repo
 ```bash
-python main.py
-```
-
-### Configuration
-Configuration is managed in `main.py` (parameters dict) and `printer.json` (machine limits).
-
-#### Key Parameters (`main.py`)
-- `infill`: Set to `"wavy"` for the organic lattice.
-- `infill_size`: Controls the density of the lattice (e.g., `1.5` mm).
-- `global_spiral`: Set to `True` for one-stroke continuous printing.
-- `flow_rate`: Extrusion multiplier (default `1.0`).
-- `z_follow_amp`: Amplitude of the Z-modulation wave.
-
-## File Structure
-- `main.py`: Entry point. Sets parameters, loads STL, and orchestrates the slicing/planning.
-- `slicer.py`: Handles STL slicing, polygon generation, and lattice graph creation (contains `generate_wavy_lattice`).
-- `planner.py`: Core path planning logic. Implements the beam search, Eulerian path generation, and G-code export.
-- `printer.json`: Printer-specific constraints (bed size, max speeds).
-
-## Troubleshooting
-- **Empty Objects**: Ensure `infill` is set to `"wavy"` and `infill_size` is appropriate for your model size.
-- **Extrusion Issues**: Adjust `flow_rate` in `main.py` if under/over-extruding.
-- **Connection Gaps**: The planner automatically attempts to bridge gaps; check `line_width` settings if gaps persist.
+git clone [https://github.com/your-username/wavy-slicer.git](https://github.com/your-username/wavy-slicer.git)
+cd wavy-slicer
