@@ -43,7 +43,3 @@ We baked this project using these awesome libraries:
 
 Want to try it out? Follow these simple steps!
 
-### 1. Clone the repo
-```bash
-git clone [https://github.com/your-username/wavy-slicer.git](https://github.com/your-username/wavy-slicer.git)
-cd wavy-slicer
