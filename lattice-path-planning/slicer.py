@@ -3,19 +3,12 @@ File to contain Slicer class which takes a stl model and generates cross section
 infill geometry
 """
 
-from matplotlib import pyplot as plt
 import numpy as np
 from typing import Dict, List
 import trimesh 
-from matplotlib.patches import Polygon
-import lattpy as lp
-from lattpy import Lattice
 import networkx as nx
-from shapely.geometry import LineString
 import shapely as shp
 from collections import defaultdict
-import pickle
-import os
 import math
 from scipy.spatial import cKDTree
 
@@ -38,10 +31,13 @@ class Slicer:
         Generates a 2D lattice graph restricted to the polygon with sinusoidal distortion.
         Innovation: "Organic/Wavy" Infill for better layer adhesion and aesthetics.
         """
-        size = self.params["infill_size"]
         minx, miny, maxx, maxy = polygon.bounds
+        size_orig = float(self.params["infill_size"])
+        lw = float(self.params.get("line_width", 0.4))
+        bbox_w = maxx - minx
+        bbox_h = maxy - miny
+        size = max(lw, min(size_orig, max(lw, min(bbox_w, bbox_h) / 2.0)))
         
-        # Expand bounds
         minx -= size
         miny -= size
         maxx += size
@@ -74,15 +70,27 @@ class Slicer:
                 points.append((x_new, y_new))
         
         # Filter points inside polygon
-        from matplotlib.path import Path
-        poly_path = Path(list(polygon.exterior.coords))
         points_arr = np.array(points)
         
         if len(points_arr) == 0:
             return nx.Graph()
             
-        mask = poly_path.contains_points(points_arr)
-        valid_points = points_arr[mask]
+        valid_points = None
+        try:
+            shapely_points = shp.points(points_arr[:, 0], points_arr[:, 1])
+            mask = shp.contains(polygon, shapely_points)
+            if np.isscalar(mask):
+                raise RuntimeError("scalar mask")
+            valid_points = points_arr[mask]
+        except Exception:
+            try:
+                import shapely.vectorized as vz
+                mask = vz.contains(polygon, points_arr[:, 0], points_arr[:, 1])
+                valid_points = points_arr[mask]
+            except Exception:
+                from shapely.geometry import Point
+                m = [polygon.contains(Point(x, y)) for x, y in points_arr]
+                valid_points = points_arr[np.array(m, dtype=bool)]
         
         if len(valid_points) == 0:
             return nx.Graph()
@@ -94,9 +102,8 @@ class Slicer:
             
         # Connect Neighbors using KDTree
         tree = cKDTree(valid_points)
-        # Search radius: slightly larger than max grid distance (size)
-        # In hex grid, max dist is size. With distortion, maybe 1.4*size.
-        search_radius = size * 1.4
+        factor = float(self.params.get("wavy_neigh_radius_factor", 2.0))
+        search_radius = size * factor
         pairs = tree.query_pairs(r=search_radius)
         
         for i, j in pairs:
@@ -144,16 +151,12 @@ class Slicer:
             self.planner = Planner(self.params, self.layer_polygons, [])
         else:
             # normal flow: build lattice and graphs
-            # self.lattice = self.generate_lattice() # Removed: using generate_wavy_lattice per layer
             self.layer_graphs = self.generate_layer_graphs()
             self.planner = Planner(self.params, self.layer_polygons, self.layer_graphs)
             self.layer_paths = self.planner.generate_layer_paths()
 
         # generate a gcode file
         self.planner.generate_gcode(self.layer_paths)
-
-        # plot the finals paths
-        self.plot_final_paths()
 
     def generate_contour_paths(self) -> List[List[np.ndarray]]:
         """
@@ -162,7 +165,7 @@ class Slicer:
         """
         layer_paths = []
         # Use 0.8 * line_width for overlap to prevent gaps
-        step = float(self.params.get("line_width", 0.4)) * 0.8
+        step = float(self.params.get("line_width", 0.4)) * float(self.params.get("contour_step_factor", 0.7))
         for layer_idx in range(self.n_layers):
             stitched = []
             regions = self.layer_polygons[layer_idx]
@@ -217,71 +220,28 @@ class Slicer:
             layer_paths.append(stitched)
         return layer_paths
 
-    def slice_debug(self, path: str) -> None:
-        """
-        Perform the exact same operations as the main slice function, but in order to save time in
-        debugging and developing code, save major variables as pickle files and load them instead of
-        re-running the whole code. 
-        """
+    def generate_region_contour_paths(self, poly: shp.Polygon) -> List[np.ndarray]:
+        paths = []
+        step = float(self.params.get("line_width", 0.4)) * float(self.params.get("contour_step_factor", 0.5))
+        cur = poly
+        while True:
+            cur = cur.buffer(-step)
+            if cur.is_empty:
+                break
+            geoms = list(cur.geoms) if isinstance(cur, shp.MultiPolygon) else [cur]
+            for g in geoms:
+                coords = np.array(g.exterior.coords)
+                if coords.shape[0] >= 2:
+                    paths.append(coords)
+        return paths
 
-        # load the mesh and slice and perform a quick generation of the internal lattice 
-        self.load_part(path)
-        self.lattice = self.generate_lattice()
-        self.layer_edges = self.create_raw_slices()
-
-        # base directory for all pickled variables
-        base_dir = "pickled-vars/"
-
-        # extra set of variables to force any section to re-run, even if pickle files exist
-        force_slice_to_poly = False
-        force_generate_layer_graphs = False
-        force_generate_layer_paths = False
-
-        # check to see if layer polygons have already been created
-        layer_poly_file = base_dir + "layer_polygons.pckl"
-        if os.path.isfile(layer_poly_file) and not force_slice_to_poly:
-            with open(layer_poly_file, 'rb') as f:
-                self.layer_polygons = pickle.load(f)
-        else:
-            self.layer_polygons = self.slice_to_polly()
-            with open(layer_poly_file, 'wb') as f:
-                pickle.dump(self.layer_polygons, f)
-
-        # check to see if layer graphs have already been created
-        layer_graphs_file = base_dir + "layer_graphs.pckl" 
-        if os.path.isfile(layer_graphs_file) and not force_generate_layer_graphs:
-            with open(layer_graphs_file, 'rb') as f:
-                self.layer_graphs = pickle.load(f)
-        else:
-            self.layer_graphs = self.generate_layer_graphs()
-            with open(layer_graphs_file, 'wb') as f:
-                pickle.dump(self.layer_graphs, f)
-        
-        # pull in the separate planner object to do the final path planning
-        self.planner = Planner(self.params, self.layer_polygons, self.layer_graphs)
-
-        # check to see if layer_paths have already been created
-        layer_paths_file = base_dir + "layer_paths.pckl"
-        if os.path.isfile(layer_paths_file) and not force_generate_layer_paths:
-            with open(layer_paths_file, 'rb') as f:
-                self.layer_paths = pickle.load(f)
-        else:
-            self.layer_paths = self.planner.generate_layer_paths()            
-            with open(layer_paths_file, 'wb') as f:
-                pickle.dump(self.layer_paths, f)
-
-        # generate a gcode file
-        self.planner.generate_gcode(self.layer_paths)
-        
-        # plot final paths
-        self.plot_final_paths()        
-        
     def load_part(self, path: str) -> None:
         """
         Preform all the necessary initializations when loading a model from a file
         """
         self.mesh = trimesh.load(path)
         self.mesh.rezero()
+        b = self.mesh.bounds
         
         # Center the model if printable_area is provided
         printable_area = self.params.get("printable_area")
@@ -321,7 +281,7 @@ class Slicer:
                     new_bounds = self.mesh.bounds
                     new_center_x = (new_bounds[0][0] + new_bounds[1][0]) / 2.0
                     new_center_y = (new_bounds[0][1] + new_bounds[1][1]) / 2.0
-                    print(f"Model centered to ({new_center_x:.2f}, {new_center_y:.2f})")
+                    pass
                     
             except Exception as e:
                 print(f"Warning: Failed to center model: {e}")
@@ -525,29 +485,27 @@ class Slicer:
         Innovation: Generates robust, organic infill per layer.
         """
         self.layer_graphs = []
+        base_layers = int(self.params.get("base_layers", 2))
+        top_layers = int(self.params.get("top_layers", 2))
         
         # Iterate through each layer
         for layer_idx in range(self.n_layers):
+            is_solid_layer = (layer_idx < base_layers) or (layer_idx >= self.n_layers - top_layers)
             polygons = self.layer_polygons[layer_idx]
             graphs = []
             
             for polygon in polygons:
-                # 1. Handle Polygon Buffer
-                # Buffer negative to fit inside perimeter
-                # Use slightly larger buffer than line_width to ensure clearance
-                # But generate_spanning_tree uses -line_width.
-                # Let's use -0.6 * line_width to allow some overlap for connection?
-                # Actually, if we use -line_width, it matches the perimeter generation.
-                offset = -0.6 * self.params["line_width"]
-                
-                if isinstance(polygon, shp.Polygon):
-                    buffer_poly = polygon.buffer(offset)
-                else:
-                    poly_points = polygon.get_xy()
-                    buffer_poly = shp.Polygon(poly_points).buffer(offset)
-                
-                if buffer_poly.is_empty:
-                    continue
+                line_w = float(self.params["line_width"])
+                offsets = [-0.6 * line_w, -0.4 * line_w, -0.2 * line_w, -0.1 * line_w, -0.05 * line_w, 0.0]
+                poly_obj = polygon if isinstance(polygon, shp.Polygon) else shp.Polygon(polygon.get_xy())
+                buffer_poly = None
+                for off in offsets:
+                    candidate = poly_obj.buffer(off)
+                    if not candidate.is_empty:
+                        buffer_poly = candidate
+                        break
+                if buffer_poly is None or buffer_poly.is_empty:
+                    buffer_poly = poly_obj
                     
                 # 2. Handle MultiPolygon (Region splitting)
                 regional_polygons = []
@@ -559,101 +517,39 @@ class Slicer:
                 
                 # 3. Generate Graph for each region
                 for poly in regional_polygons:
-                    # Generate Wavy Lattice inside this polygon
                     graph = self.generate_wavy_lattice(poly)
-                    
-                    # Store the polygon in the graph for Planner
                     graph.graph["polygon"] = poly
-                    
-                    # Only add non-empty graphs? 
-                    # If empty, Planner skips it? 
-                    # If empty, we might want to print at least the perimeter?
-                    # Planner.generate_spanning_tree handles empty graphs by printing perimeter.
+                    if graph.number_of_nodes() == 0 or graph.number_of_edges() == 0:
+                        cps = self.generate_region_contour_paths(poly)
+                        if cps:
+                            graph.graph["contour_paths"] = cps
+                        graphs.append(graph)
+                        continue
+                    nodes_th = int(self.params.get("hybrid_node_threshold", 12))
+                    edges_th = int(self.params.get("hybrid_edge_threshold", 10))
+                    comps_th = int(self.params.get("hybrid_component_threshold", 4))
+                    small_area = float(self.params.get("hybrid_small_area_mm2", 30.0))
+                    min_bbox = float(self.params.get("hybrid_min_bbox_mm", 1.2))
+                    bx0, by0, bx1, by1 = poly.bounds
+                    bw = bx1 - bx0
+                    bh = by1 - by0
+                    comps = nx.number_connected_components(graph) if graph.number_of_nodes() > 0 else 0
+                    use_contour = (
+                        is_solid_layer or
+                        graph.number_of_nodes() < nodes_th or
+                        graph.number_of_edges() < edges_th or
+                        comps > comps_th or
+                        poly.area < small_area or
+                        min(bw, bh) < min_bbox
+                    )
+                    if use_contour:
+                        cps = self.generate_region_contour_paths(poly)
+                        if cps:
+                            graph.graph["contour_paths"] = cps
                     graphs.append(graph)
             
             self.layer_graphs.append(graphs)
         
         return self.layer_graphs
     
-    def plot_mesh(self) -> None:
-        """
-        Plot the model in a 3D pyplot
-        """
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
 
-        ax.plot_trisurf(self.mesh.vertices[:, 0],
-                        self.mesh.vertices[:,1], 
-                        triangles=self.mesh.faces, 
-                        Z=self.mesh.vertices[:,2], 
-                        alpha=1)
-    
-    def plot_lattice(self) -> None:
-        """
-        Plot the lattice
-        """
-        latt = self.lattice
-        latt.plot()
-
-    def plot_layer_edge(self, layer: int) -> None:
-        """
-        Plot a given layer_edge
-        Params: 
-            layer: int
-        """
-        layer_edge = self.layer_edges[layer]
-
-        for idx in range(np.shape(layer_edge)[0]):
-            plt.plot(*layer_edge[idx,:,:].T, "-k")
-
-    def plot_layer_graph(self, layer: int) -> None:
-        """
-        Plot the networkx graph for a given layer
-        """
-        for G in self.layer_graphs[layer]:
-            nx.draw(G, pos=posgen(G), node_size = 1, with_labels=True)
-
-    def plot_final_paths(self) -> None:
-        """
-        Using the generated self.layer_paths, plot them all on a 3D matplotlib figure
-        """
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
-        for layer_idx, layer_data in enumerate(self.layer_paths):
-            for pts in layer_data:
-                ax.plot(*pts.T, layer_idx*self.params["layer_height"])
-
-# MISC FUNCTIONS
-
-def dist_btw_graph_nodes(graph: nx.Graph, node_1: int, node_2: int) -> float:
-    """
-    Given a graph, calculate the distance between two nodes
-    """
-    x1 = graph.nodes[node_1]["x"]
-    y1 = graph.nodes[node_1]["y"]
-    x2 = graph.nodes[node_2]["x"]
-    y2 = graph.nodes[node_2]["y"]
-
-    return math.sqrt((x2-x1)**2 + (y2-y1)**2)
-
-# Return true if line segments AB and CD intersect
-def intersect(A: List[List], B: List[List], C: List[List], D: List[List]):
-    """
-    Return true if line segments AB and CD intersect
-
-    params:
-        A,B,C,D: List[List] of coordinate points
-    """
-    def ccw(A,B,C):
-        return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
-    return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
-
-def posgen(G: nx.Graph):
-    """
-    Returns a dictionary where for each key which is node in graph, we get the coordinate value of
-    its position
-    """
-    ret = {}
-    for n in G:
-        ret[n] = [G.nodes[n]["x"],G.nodes[n]["y"]]
-    return ret

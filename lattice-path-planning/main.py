@@ -1,10 +1,8 @@
 from slicer import Slicer
-from matplotlib import pyplot as plt
+
 from pathlib import Path
 import json
 import os
-import ssl
-from urllib import request, error
 
 
 if __name__ == "__main__":
@@ -47,7 +45,7 @@ if __name__ == "__main__":
              print("Using default printer configuration.")
              printer_config = default_config
 
-    path = str((Path(__file__).resolve().parent / "models" / "bunny.stl"))
+    path = str((Path(__file__).resolve().parent / "models" / "cubexyz.stl"))
 
     # Process Printer Config (G-code substitutions)
     start_gcode = printer_config.get("machine_start_gcode", "")
@@ -73,19 +71,19 @@ if __name__ == "__main__":
         "layer_height": 0.2,
         "base_layers": 2,
         "top_layers": 2,
-        "infill": "wavy", # Changed to wavy (organic sinusoidal lattice)
-        "infill_size": 1.5, # Increased to 1.5mm to visualize the wavy pattern
+        "infill": "wavy",
+        "infill_size": 3.0,
         "line_width": 0.4,
         "flow_rate": 1.0,   # Added flow rate control
         "planner_mode": "beam", # Core Algorithm: Topology-Aware Adaptive Beam Search
-        "z_follow_mode": "spiral",
+        "z_follow_mode": "constant",
         "z_nonlinear_fn": "smoothstep",
         "z_follow_amp": 1.0,
         "randomize_start": True,
         "start_ramp_mm": 2.0,
         "coast_mm": 0.6,
         "wipe_mm": 1.5,
-        "global_spiral": True,
+        "global_spiral": False,
         "seam_preference": "max_y",
         "perimeter_inner_offset_factor": 0.0,
         "print_feed_rate": 1800, # Reduced from 3600 (60mm/s) to 30mm/s for better adhesion/quality
@@ -106,12 +104,26 @@ if __name__ == "__main__":
         "accessibility_weight": 2.0, # Reward nodes with higher future connectivity (Degree Centrality)
         "printable_area": printer_config.get("printable_area", []),
         "max_z_speed": float(printer_config.get("machine_max_speed_z", ["10"])[0]) * 60, # Convert mm/s to mm/min
+        "wavy_neigh_radius_factor": 3.0,
+        "contour_step_factor": 0.28,
+        "hybrid_node_threshold": 0,
+        "hybrid_edge_threshold": 0,
+        "hybrid_component_threshold": 9999,
+        "hybrid_small_area_mm2": 0.0,
+        "hybrid_min_bbox_mm": 0.0,
     }
     # Allow overriding planner mode via environment variable
     env_mode = os.environ.get("PLANNER_MODE")
     if env_mode in ("dfs", "beam"):
         params["planner_mode"] = env_mode
     print(f"Planner mode: {params['planner_mode']}")
+    env_force = os.environ.get("FORCE_WAVY")
+    if env_force == "1":
+        params["hybrid_node_threshold"] = 0
+        params["hybrid_edge_threshold"] = 0
+        params["hybrid_component_threshold"] = 9999
+        params["hybrid_small_area_mm2"] = 0.0
+        params["hybrid_min_bbox_mm"] = 0.0
 
     slicer = Slicer(params)
 

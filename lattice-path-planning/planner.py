@@ -5,10 +5,8 @@ File for taking the graph and crating path and gcode
 import networkx as nx
 from typing import Dict, List, Tuple
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
 import math
-from shapely import LineString
+from shapely.geometry import LineString, Polygon
 from shapely import buffer
 import shapely as shp
 import sys
@@ -101,6 +99,7 @@ class Planner:
             for region_idx, graph in enumerate(self.layer_graphs[layer_idx]):
                 # Retrieve polygon associated with this graph (from new Slicer logic)
                 polygon = graph.graph.get("polygon")
+                contour_paths = graph.graph.get("contour_paths")
                 
                 # Fallback for compatibility or safety
                 if polygon is None:
@@ -110,8 +109,10 @@ class Planner:
                         print(f"Warning: No polygon found for graph {region_idx} in layer {layer_idx}")
                         continue
 
-                # try:
-                # generate a spanning tree (or multiple) to cover a region in the layer
+                if contour_paths:
+                    for arr in contour_paths:
+                        region_paths.append(arr)
+                    continue
                 trees = self.generate_spanning_tree(polygon, graph)
 
                 # if a tree can cover this region, generate a path
@@ -129,11 +130,6 @@ class Planner:
 
                         # save the final path into our regional_paths list
                         region_paths.append(offset_path)
-                # except Exception as e:
-                #     print(f"Error processing layer {layer_idx}, region {region_idx}: {e}")
-                #     import traceback
-                #     traceback.print_exc()
-                #     continue
 
             layer_paths.append(region_paths)
 
@@ -149,9 +145,6 @@ class Planner:
             layer_paths: List[List[np.ndarray]] - a list of list of numpy arrays that contain the xy
                 coordinates of a valid path to print a layer
         """
-
-        # create a little progress bar
-        # pbar = tqdm(total=self.n_layers,desc = "Generating gcode")
 
         # keep a global counter of how much we have extruded and our current layer number
         extrusion = 0
@@ -306,7 +299,12 @@ class Planner:
                 base_z = layer_idx * self.params["layer_height"]
                 perims = []
                 for reg in self.layer_polygons[layer_idx]:
-                    poly = shp.Polygon(reg.get_xy())
+                    if isinstance(reg, shp.Polygon):
+                        poly = reg
+                    elif hasattr(reg, "get_xy"):
+                        poly = shp.Polygon(reg.get_xy())
+                    else:
+                        continue
                     offset = -inner_factor * self.params["line_width"]
                     poly2 = poly.buffer(offset) if offset != 0.0 else poly
                     geoms = list(poly2.geoms) if isinstance(poly2, shp.MultiPolygon) else [poly2]
@@ -432,10 +430,7 @@ class Planner:
                             z_min = min(z_min, p[2])
                             z_max = max(z_max, p[2])
 
-            print(f"DEBUG: n_layers={self.n_layers}, layer_height={self.params['layer_height']}")
-            print(f"DEBUG: len(sorted_layer_data)={len(sorted_layer_data)}")
-            print(f"DEBUG: Total Path Length: {total_path_len:.2f} mm")
-            print(f"DEBUG: Z-Range: {z_min:.4f} to {z_max:.4f}")
+            pass
 
             if "start_gcode" in self.params:
                 gcode.append(self.params["start_gcode"])
@@ -685,29 +680,27 @@ class Planner:
         # get buffer polygon that is 1x width smaller than original polygon, this is when we print
         # perimeter of our part, our part remains dimensionally accurate
         
-        # Handle input polygon type (matplotlib or shapely)
+        # Handle input polygon type
         if isinstance(polygon, shp.Polygon):
-             poly_points = np.array(polygon.exterior.coords)
              # Use shapely buffer directly on the polygon to handle holes correctly if present
              buffer_poly = polygon.buffer(-self.params["line_width"])
-        else:
+        elif hasattr(polygon, "get_xy"):
              poly_points = polygon.get_xy()
              buffer_poly = shp.Polygon(poly_points).buffer(-self.params["line_width"])
+        else:
+             raise ValueError(f"Unknown polygon type: {type(polygon)}")
 
         # now we have to deal with the possible edge case that if we buffer the whole exterior by a 
         # line width, it is possible that our single polygons splits into multiple polygons, so now
         # we create a list of polygons to deal with, if our polygon is still only one region, our
         # list will only have one item in it.
-        poly_exteriors = []
-        if type(buffer_poly) == shp.MultiPolygon:
-            for sub_poly_idx in range(len(buffer_poly.geoms)):
-                poly_exteriors.append(Polygon(np.array(buffer_poly.geoms[sub_poly_idx].exterior.coords.xy).T))
+        
+        poly_points_array = []
+        if isinstance(buffer_poly, shp.MultiPolygon):
+            for geom in buffer_poly.geoms:
+                poly_points_array.append(np.array(geom.exterior.coords))
         else:
-            poly_exteriors.append(Polygon(np.array(buffer_poly.exterior.coords.xy).T))
-
-        # get a numpy array for each possible polygon region
-        # Note: These are now matplotlib Polygons again (created above), so .get_xy() is valid
-        poly_points_array = [polygon.get_xy() for polygon in poly_exteriors]
+            poly_points_array.append(np.array(buffer_poly.exterior.coords))
 
         # if any of the regions are null, return empty list
         # NOTE: I think this might be legacy code and isn't needed anymore
@@ -1079,17 +1072,7 @@ class Planner:
         
         traverse(root)
         return path
-    def plot_tree(self, node: TreeNode) -> None:
-        """
-        Function to plot a tree only given it's initial root node, recursively go through tree plotting
-        tree branches until we reach leaf nodes.
 
-        Params:
-            node: TreeNode - the root node of the tree to start plotting at
-        """
-        for child in node.children:
-            plt.plot([node.pos[0], child.pos[0]],[node.pos[1],child.pos[1]],"-k")
-            self.plot_tree(child)
             
 
 
@@ -1116,53 +1099,4 @@ def intersection_point(line1, line2):
     return point[0], point[1]
 
 
-def angle(vertex0, vertex_1, vertex_2, angle_type='unsigned'):
-    """
-    Compute the angle between two edges  vertex0-- vertex_1 and  vertex0--
-    vertex_2 having an endpoint in common. The angle is computed by starting
-    from the edge  vertex0-- vertex_1, and then ``walking'' in a
-    counterclockwise manner until the edge  vertex0-- vertex_2 is found.
-    """
-    # tolerance to check for coincident points
-    tol = 2.22e-16
 
-    # compute vectors corresponding to the two edges, and normalize
-    vec1 = vertex_1 - vertex0
-    vec2 = vertex_2 - vertex0
-
-    norm_vec1 = np.linalg.norm(vec1)
-    norm_vec2 = np.linalg.norm(vec2)
-    if norm_vec1 < tol or norm_vec2 < tol:
-        # vertex_1 or vertex_2 coincides with vertex0, abort
-        edge_angle = math.nan
-        return edge_angle
-
-    vec1 = vec1 / norm_vec1
-    vec2 = vec2 / norm_vec2
-
-    # Transform vec1 and vec2 into flat 3-D vectors,
-    # so that they can be used with np.inner and np.cross
-    vec1flat = np.vstack([vec1, 0]).flatten()
-    vec2flat = np.vstack([vec2, 0]).flatten()
-
-    c_angle = np.inner(vec1flat, vec2flat)  # cos(theta) between two edges
-    s_angle = np.inner(np.array([0, 0, 1]), np.cross(vec1flat, vec2flat))
-
-    edge_angle = math.atan2(s_angle, c_angle)
-
-    angle_type = angle_type.lower()
-    if angle_type == 'signed':
-        # nothing to do
-        pass
-    elif angle_type == 'unsigned':
-        edge_angle = (edge_angle + 2 * math.pi) % (2 * math.pi)
-    else:
-        raise ValueError('Invalid argument angle_type')
-
-    return edge_angle
-
-def posgen(G):
-    ret = {}
-    for n in G:
-        ret[n] = [G.nodes[n]["x"],G.nodes[n]["y"]]
-    return ret
