@@ -39,7 +39,4 @@ We baked this project using these awesome libraries:
 
 ---
 
-## 🚀 Getting Started
-
-Want to try it out? Follow these simple steps!
 
