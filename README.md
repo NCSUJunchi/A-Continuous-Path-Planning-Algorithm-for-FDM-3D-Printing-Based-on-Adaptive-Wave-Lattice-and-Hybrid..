@@ -5,7 +5,7 @@
 ![Love](https://img.shields.io/badge/Built%20with-💖-ff69b4?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Experimental-orange?style=for-the-badge)
 
-Hi there! 👋 Welcome to **Wavy Slicer**. This isn't your boring old grid infill generator. This is a research-grade slicing engine that uses **Graph Theory** and **Sine Waves** to create organic, strong, and beautiful internal structures for FDM 3D printing.
+Hi there! 👋 Welcome to **Wavy Slicer**.This is a research-grade slicing engine that uses **Graph Theory** and **Sine Waves** to create organic, strong, and beautiful internal structures for FDM 3D printing.
 
 ---
 
