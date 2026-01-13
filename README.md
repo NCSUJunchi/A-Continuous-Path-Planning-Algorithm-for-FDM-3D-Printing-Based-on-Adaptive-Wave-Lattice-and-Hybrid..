@@ -1,4 +1,4 @@
-# 🌊 Wavy Lattice Slicer 🧶
+# 🌊 Wavy Lattice Slicer 🧶（未完成，论文发表后，发布正式代码）
 > **Make your 3D prints dance with bio-inspired internal structures!** 💃✨
 
 ![Python](https://img.shields.io/badge/Made%20with-Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
