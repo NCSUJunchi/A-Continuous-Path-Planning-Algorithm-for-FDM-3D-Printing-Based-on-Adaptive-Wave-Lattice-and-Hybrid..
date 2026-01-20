@@ -30,12 +30,3 @@ Your printer will purr, not vibrate. 🐱
 
 ---
 
-### 🖼️ Preview
-
-*(Put your `wave_plot.png` here)*
-
-![WaveFill Demo](wave_plot.png)
-
----
-
-MIT License · Made with 💖 & Math
