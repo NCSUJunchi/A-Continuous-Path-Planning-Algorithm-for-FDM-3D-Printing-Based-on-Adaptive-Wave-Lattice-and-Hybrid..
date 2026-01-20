@@ -1,42 +1,41 @@
-# 🌊 Wavy Lattice Slicer 🧶（未完成，论文发表后，发布正式代码）
-> **Make your 3D prints dance with bio-inspired internal structures!** 💃✨
+# 🌊 WaveFill（未完成，论文提交后发布正式）
 
-![Python](https://img.shields.io/badge/Made%20with-Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Love](https://img.shields.io/badge/Built%20with-💖-ff69b4?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-Experimental-orange?style=for-the-badge)
+> **Wiggle your G-code.** ✨
 
-Hi there! 👋 Welcome to **Wavy Slicer**.This is a research-grade slicing engine that uses **Graph Theory** and **Sine Waves** to create organic, strong, and beautiful internal structures for FDM 3D printing.
+No more boring grids. WaveFill turns 3D print infill into smooth, continuous sine waves.
+Your printer will purr, not vibrate. 🐱
 
 ---
 
-## 🎨 What makes it special? (The Magic)
+### 🍦 Why?
 
-### 1. 🌊 Bio-Mimetic Wavy Infill
-Instead of rigid straight lines, we use **sinusoidal modulation** ($x' = x + A \sin(ky)$) to wiggle the path.
-* **Why?** It looks super cool AND it increases the contact area between layers for better adhesion! 
+* **So Smooth:** 100% continuous curves. No sharp turns.
+* **Energy Efficient:** Minimizes acceleration/deceleration.
+* **Interlocked:** Layers weave together like fabric. 🧶
 
-### 2. 🧠 Smart Hybrid Brain
-The slicer is "self-aware"! It analyzes the geometry of every layer:
-* **Big Area?** -> Generates the Wavy Lattice for speed and strength. 🚀
-* **Tiny/Broken Area?** -> Automatically switches to **Contour Mode** (concentric rings) to ensure the print doesn't fail. 🛡️
+### 🚀 Quick Start
 
-### 3. 🧭 Graph-Based Path Planning
-We treat the printing path as a **Graph Traversal Problem** ($G(V,E)$).
-* Uses **DFS (Depth First Search)** and **Beam Search** to find the most efficient route.
-* Minimizes "Travel Moves" (jumping around without printing). 🏃‍♂️💨
+1.  **Install**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
----
+2.  **Run**
+    ```bash
+    python main.py
+    ```
 
-## 🛠️ Tech Stack (The Ingredients)
-
-We baked this project using these awesome libraries:
-
-* 🐍 **Python** (The core logic)
-* 📐 **Trimesh** (For slicing the STL)
-* 🔵 **Shapely** (For polygon math & clipping)
-* 🕸️ **NetworkX** (For graph building & traversal)
-* 🔢 **NumPy/SciPy** (For the mathy stuff)
+3.  **Print**
+    Grab the `.gcode` and go! 🖨️
 
 ---
 
+### 🖼️ Preview
 
+*(Put your `wave_plot.png` here)*
+
+![WaveFill Demo](wave_plot.png)
+
+---
+
+MIT License · Made with 💖 & Math
